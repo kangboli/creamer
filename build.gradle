@@ -1,0 +1,37 @@
+plugins {
+    id 'application'
+}
+
+group 'org.example'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.6.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+    implementation 'org.antlr:antlr4:4.9'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+task compileQELexer(type:Exec) {
+    workingDir 'src/main/QEDocGrammar/'
+    environment 'CLASSPATH', '/usr/local/lib/antlr-4.9-complete.jar:$CLASSPATH'
+    commandLine 'antlr4', 'QEDocLexer.g4','-visitor', '-package', 'GeneratedQEGrammar', '-o', '../java/GeneratedQEGrammar/'
+}
+
+task compileQEParser(type:Exec) {
+    dependsOn 'compileQELexer'
+    workingDir 'src/main/QEDocGrammar/'
+    environment 'CLASSPATH', '/usr/local/lib/antlr-4.9-complete.jar:$CLASSPATH'
+    commandLine 'antlr4', 'QEDocParser.g4', '-visitor', '-package', 'GeneratedQEGrammar', '-o', '../java/GeneratedQEGrammar/'
+}
+
+application {
+    mainClass = 'QECodeGen.QECodeGenerator'
+}
