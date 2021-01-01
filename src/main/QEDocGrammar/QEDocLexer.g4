@@ -1,66 +1,77 @@
 lexer grammar QEDocLexer;
 Comments: '#'~[\n]*'\n' -> skip;
-IntroBegin: 'intro' WS? OB -> pushMode(richText);
-DefaultBegin: 'default' WS? OB -> pushMode(richText);
-InfoBegin: 'info' WS? OB -> pushMode(richText);
-OptBegin: 'opt' WS+ '-val' WS? (ID|String|OB WS? String WS?(',' WS? String WS?)* CB|OB ID WS* EQ WS* ID CB) WS? OB -> pushMode(richText);
-StatusBegin: 'status' WS? OB -> pushMode(richText);
-TextBegin: 'text' WS? OB -> pushMode(richText);
-ScopedTitleBegin: '-title' WS? OB -> pushMode(richText);
-LabelBegin: 'label' WS? OB -> pushMode(richText);
-MessageBegin: 'message' WS? OB -> pushMode(richText);
-DistributionBegin: '-distribution' WS+ OB ->pushMode(richText);
 
-OptionalSwitch: Flag WS Optional;
-TOC: 'toc' WS? OB WS? CB;
-COMMA: ',';
-CardFlag: 'flag';
-EQ: '=';
-Group: 'group';
-NameList: 'namelist';
-Var: 'var';
-Dim: ('dimension'|'multidimension');
+IntroBegin: Intro WS? SwitchText* WS? OB -> pushMode(richText);
+OptBegin: Opt WS? SwitchText* WS? OB -> pushMode(richText);
+DefaultBegin: Default WS? SwitchText* WS? OB -> pushMode(richText);
+InfoBegin: Info WS? SwitchText* WS? OB -> pushMode(richText);
+StatusBegin: Status WS? SwitchText* WS? OB -> pushMode(richText);
+TextBegin: Text WS? SwitchText* WS? OB -> pushMode(richText);
+LabelBegin: Label WS? SwitchText* WS? OB -> pushMode(richText);
+MessageBegin: Message WS? SwitchText* WS? OB -> pushMode(richText);
+EnumBegin: Enum WS? SwitchText* WS? OB ->pushMode(richText);
+TOCBegin: Toc WS? SwitchText* WS? OB ->pushMode(richText);
+SeeBegin: See WS? SwitchText* WS? OB ->pushMode(richText);
+
+Intro: 'intro';
+Opt: 'opt';
+Default: 'default';
+Info: 'info';
+Status: 'status';
+Text: 'text';
+Label: 'label';
+Message: 'message';
+Enum: 'enum';
+Toc: 'toc';
 See: 'see';
-VarGroup: 'vargroup';
-InputDiscription: 'input_description';
+
+InputDescription: 'input_description';
+Card: 'card';
+CardFlag: 'flag';
+Choose: 'choose';
+Col: 'col';
+ColGroup: 'colgroup';
+Cols: 'cols';
+Conditional: 'conditional';
+Dim: ('dimension'|'multidimension');
+DimensionGroup: 'dimensiongroup';
+ElseWhen: 'elsewhen';
+Group: 'group';
+Line: 'line';
+NameList: 'namelist';
+Optional: 'optional';
 Options: 'options';
+Otherwise: 'otherwise';
+RowGroup: 'rowgroup';
+Row: 'row';
+Rows: 'rows';
 Section: 'section';
 Subsection: 'subsection';
-Card: 'card';
-Choose: 'choose';
-When: 'when' WS '-test';
-ElseWhen: 'elsewhen' WS '-test';
-Otherwise: 'otherwise';
-PIPE: '|';
-Enum: 'enum';
 Syntax: 'syntax';
-Line: 'line';
 Table: 'table';
-Optional: 'optional';
-Rows: 'rows';
-Cols: 'cols';
-Row: 'row';
-Col: 'col';
-RowGroup: 'rowgroup';
-ColGroup: 'colgroup';
-Conditional: 'conditional';
+VarGroup: 'vargroup';
+Var: 'var';
+When: 'when';
+
+SwitchText: Flag WS ~['"{}-]+
+          | Flag WS OB ~[{}]+ CB
+          | Flag WS '\'' ~[']+ '\''
+          | Flag WS '"' ~["]+ '"'
+          ;
+
 Flag: '-'ID ;
 String: '\''WS? (WS? ID WS?)* WS?'\'';
-ID: Word([-+]Word)?;
-Mul: '*';
-Semicolon: ';' -> skip;
-Plus: '+';
-ArgOr: '\\ or\\ ';
-ConditionalPredicates: '"'.*?'"';
+ID: Elem([-+]Elem)?;
 fragment
-Word: [._a-zA-Z0-9()]+ ;
+Elem: [._a-zA-Z0-9()]+ ;
+
+Semicolon: ';' -> skip;
 WS : [ \t\r\n]+ -> skip;
 OB: '{';
 CB: '}';
 
 mode richText;
 Ref: '@ref' WST? WordText;
-//Bold: ('@b' WST? ScopedText|'@b' WST? WordText);
 IText: '@i' WST? (StringText|LogicalText|ScopedText|WordText);
 BoldText: '@b' WST? (StringText|LogicalText|ScopedText|WordText);
 TTText: '@tt' WST? (StringText|LogicalText|ScopedText|WordText);
@@ -69,6 +80,12 @@ StringText: '\''WST? (WST? WordText WST?)* WST?'\'';
 LogicalText: ('.FALSE.'|'.TRUE.');
 ScopedText: '{' (WST? WordText WST?)* WST? '}';
 WordText: ~[@{} \r\t\n]+;
-//NL: WST*'\n';
 WST : [ \t\r\n]+ -> skip;
 EndText: '}' -> popMode;
+
+//Mul: '*';
+//Plus: '+';
+//DQ: '"';
+//COMMA: ',';
+//EQ: '=';
+//PIPE: '|';

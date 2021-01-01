@@ -13,6 +13,7 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.6.0'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
     implementation 'org.antlr:antlr4:4.9'
+    implementation 'org.freemarker:freemarker:2.3.30'
 }
 
 test {
@@ -22,16 +23,26 @@ test {
 task compileQELexer(type:Exec) {
     workingDir 'src/main/QEDocGrammar/'
     environment 'CLASSPATH', '/usr/local/lib/antlr-4.9-complete.jar:$CLASSPATH'
-    commandLine 'antlr4', 'QEDocLexer.g4','-visitor', '-package', 'GeneratedQEGrammar', '-o', '../java/GeneratedQEGrammar/'
+    commandLine 'java', '-jar', '/usr/local/lib/antlr-4.9-complete.jar',
+            'QEDocLexer.g4',
+            '-visitor',
+            '-package', 'GeneratedQEGrammar',
+            '-o', '../java/GeneratedQEGrammar/'
 }
 
 task compileQEParser(type:Exec) {
     dependsOn 'compileQELexer'
     workingDir 'src/main/QEDocGrammar/'
     environment 'CLASSPATH', '/usr/local/lib/antlr-4.9-complete.jar:$CLASSPATH'
-    commandLine 'antlr4', 'QEDocParser.g4', '-visitor', '-package', 'GeneratedQEGrammar', '-o', '../java/GeneratedQEGrammar/'
+    commandLine 'java', '-jar', '/usr/local/lib/antlr-4.9-complete.jar',
+            'QEDocParser.g4',
+            '-visitor',
+            '-package', 'GeneratedQEGrammar',
+            '-o', '../java/GeneratedQEGrammar/'
 }
 
+compileJava.dependsOn compileQEParser
+
 application {
-    mainClass = 'QECodeGen.QECodeGenerator'
+    mainClass = 'DSLGen.QEDSLGenerator'
 }
