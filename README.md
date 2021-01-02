@@ -12,5 +12,5 @@ It aims to provide
    with other tasks rather easy.
 3. A database for collecting and managing the calculation for down stream analysis.
    It also helps to avoid repeated calculation, especially when the 
-  aprogram on the client side crashes.
+   program on the client side crashes.
    

@@ -4,23 +4,33 @@ import GeneratedQEGrammar.QEDocParser;
 import GeneratedQEGrammar.QEDocParserBaseVisitor;
 import org.antlr.v4.runtime.tree.TerminalNode;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Stack;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
-    private final String outputDir;
-    private final HashMap<String, PythonClass> pythonClasses;
+    public final HashMap<String, ClassInternal> pythonClasses;
     // Because ANTLR4 set the method arguments to be only the context, to pass other arguments,
     // I have to manually set up a call stack.
-    private final Stack<PythonClass> classStack;
-    private final Stack<PythonMember> memberStack;
+    private final Stack<ClassInternal> classStack;
+    private final Stack<MemberInternal> memberStack;
     private int choiceCounter = 0;
     private int groupCounter = 0;
+    private int undocumentedCounter = 0;
+    public ClassInternal topLevelClass;
+    private final ClassInternal nameListClass = new ClassInternal("NameList");
+    private final ClassInternal cardClass = new ClassInternal("Card");
+    private final ClassInternal optionsClass = new ClassInternal("Options");
+    private final ClassInternal chooseClass = new ClassInternal("Choose");
+    private final ClassInternal groupClass = new ClassInternal("Group");
+    private final ClassInternal rowClass = new ClassInternal("Row");
+    private final ClassInternal choiceClass = new ClassInternal("Choice");
 
-    public DSLVisitor(String outputDir) {
-        this.outputDir = outputDir;
+    public DSLVisitor() {
         pythonClasses = new HashMap<>();
         classStack = new Stack<>();
         memberStack = new Stack<>();
@@ -28,44 +38,55 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
 
     public String toString() {
         StringBuilder builder = new StringBuilder();
-        for (Map.Entry<String, PythonClass> entry: pythonClasses.entrySet()) {
+        for (Map.Entry<String, ClassInternal> entry : pythonClasses.entrySet()) {
             builder.append(entry.getValue().toString()).append("\n");
         }
         return builder.toString();
     }
 
-    private StringBuilder withClass(Function<PythonClass, StringBuilder> f) {
-        PythonClass pc = classStack.pop();
+    private StringBuilder withClass(Function<ClassInternal, StringBuilder> f) {
+        ClassInternal pc = classStack.pop();
         StringBuilder builder = f.apply(pc);
         classStack.push(pc);
         return builder;
     }
-    private PythonMember newMember(PythonMember newPc, PythonClass pc) {
-        pc.members.add(newPc);
-        memberStack.push(newPc);
-        return newPc;
+
+    private StringBuilder withMember(Function<MemberInternal, StringBuilder> f) {
+        MemberInternal pm = memberStack.pop();
+        StringBuilder builder = f.apply(pm);
+        memberStack.push(pm);
+        return builder;
     }
 
-    private void completeMember() {
-        memberStack.pop();
-    }
-
-    private PythonClass newClass(PythonClass newPc, PythonClass pc) {
+    private ClassInternal newClass(ClassInternal newPc, ClassInternal pc, ClassType type) {
         pc.imports.add(newPc);
+        switch (type) {
+            case NAMELIST: newPc.addInherit(nameListClass);
+            case CARD: newPc.addInherit(cardClass);
+            case OPTIONS: newPc.addInherit(optionsClass);
+            case CHOOSE: newPc.addInherit(chooseClass);
+            case GROUP: newPc.addInherit(groupClass);
+            case ROW: newPc.addInherit(rowClass);
+            case CHOICE: newPc.addInherit(choiceClass);
+            default:
+        }
         classStack.push(newPc);
         return newPc;
     }
 
+    private MemberInternal newMember(MemberInternal newPm, ClassInternal pc) {
+        pc.members.add(newPm);
+        memberStack.push(newPm);
+        return newPm;
+    }
+
     private void completeClass() {
-        PythonClass complete = classStack.pop();
+        ClassInternal complete = classStack.pop();
         pythonClasses.put(complete.name.toString(), complete);
     }
 
-    private StringBuilder withMember(Function<PythonMember, StringBuilder> f) {
-        PythonMember pm = memberStack.pop();
-        StringBuilder builder = f.apply(pm);
-        memberStack.push(pm);
-        return builder;
+    private void completeMember() {
+        memberStack.pop();
     }
 
     @Override
@@ -86,28 +107,31 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     }
 
     @Override
-    public StringBuilder visitIntroBlock(QEDocParser.IntroBlockContext ctx) { return withClass(pc ->
-            pc.intro.append("Intro:\n").append(super.visitIntroBlock(ctx)).append("\n")
-    );}
+    public StringBuilder visitIntroBlock(QEDocParser.IntroBlockContext ctx) {
+        return withClass(pc -> pc.intro.append(super.visitIntroBlock(ctx)));
+    }
 
     @Override
-    public StringBuilder visitDefaultBlock(QEDocParser.DefaultBlockContext ctx) { return withMember(pm ->
-            pm.defaultString.append("Default: ").append(super.visitDefaultBlock(ctx)).append("\n")
-    );}
+    public StringBuilder visitDefaultBlock(QEDocParser.DefaultBlockContext ctx) {
+        return withMember(pm -> pm.defaultString.append(super.visitDefaultBlock(ctx)));
+    }
 
     @Override
-    public StringBuilder visitInfoBlock(QEDocParser.InfoBlockContext ctx) { return withMember(pm ->
-            pm.info.append("Info:\n").append(super.visitInfoBlock(ctx)).append("\n")
-    );}
+    public StringBuilder visitInfoBlock(QEDocParser.InfoBlockContext ctx) {
+        return withMember(pm -> pm.info.append(super.visitInfoBlock(ctx)));
+    }
 
     @Override
-    public StringBuilder visitOptBlock(QEDocParser.OptBlockContext ctx) { return withClass(pec -> {
-        String enumName = getSwitch(ctx.OptBegin(), "val");
-        assert enumName != null;
-        ((PythonEnumClass) pec).enums.put(escape(enumName.replace("{", "").trim()),
-                visit(ctx.textBlockBody()));
-        return null;
-    });}
+    public StringBuilder visitOptBlock(QEDocParser.OptBlockContext ctx) {
+        return withClass(pec -> {
+            String enumName = getSwitch(ctx.OptBegin(), "val");
+            assert enumName != null;
+            StringBuilder enumText = visit(ctx.textBlockBody());
+            pec.enums.put(enumName.replace("{", "").trim(),
+                    enumText != null? enumText: new StringBuilder("Undocumented ").append(undocumentedCounter++));
+            return null;
+        });
+    }
 
     @Override
     public StringBuilder visitStatusBlock(QEDocParser.StatusBlockContext ctx) {
@@ -120,22 +144,22 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     }
 
     @Override
-    public StringBuilder visitLabelBlock(QEDocParser.LabelBlockContext ctx) { return withClass(pc -> {
-        pc.label.append(super.visitLabelBlock(ctx));
-        return null;
-    });}
+    public StringBuilder visitLabelBlock(QEDocParser.LabelBlockContext ctx) {
+        return withClass(pc -> pc.label.append(super.visitLabelBlock(ctx)));
+    }
 
     @Override
-    public StringBuilder visitMessageBlock(QEDocParser.MessageBlockContext ctx) { return withClass(pc -> {
-        pc.message.append(super.visitMessageBlock(ctx));
-        return null;
-    });}
+    public StringBuilder visitMessageBlock(QEDocParser.MessageBlockContext ctx) {
+        return withClass(pc -> pc.message.append(super.visitMessageBlock(ctx)));
+    }
 
     @Override
-    public StringBuilder visitTocBlock(QEDocParser.TocBlockContext ctx) { return withClass(pc -> {
-        pc.toc = true;
-        return null;
-    });}
+    public StringBuilder visitTocBlock(QEDocParser.TocBlockContext ctx) {
+        return withClass(pc -> {
+            pc.toc = true;
+            return null;
+        });
+    }
 
     @Override
     public StringBuilder visitSeeBlock(QEDocParser.SeeBlockContext ctx) {
@@ -143,18 +167,20 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     }
 
     @Override
-    public StringBuilder visitEnumBlock(QEDocParser.EnumBlockContext ctx) { return withClass(pc -> withMember(pm -> {
-                if (pythonClasses.get(String.format("%s_options", pm.name)) != null) return null;
-                PythonClass enumClass = newClass(new PythonEnumClass(String.format("%s_options", pm.name)), pc);
-                pm.type = enumClass.name;
-                String enumText = ctx.textBlockBody().getText()
-                        .replace("{", "").replace("}", "");
-                for (String opt : enumText.split("\\|"))
-                    ((PythonEnumClass) enumClass).enums.put(opt.trim(), new StringBuilder(opt.trim()));
-                completeClass();
-                return  null;
-            })
-    );}
+    public StringBuilder visitEnumBlock(QEDocParser.EnumBlockContext ctx) {
+        return withClass(pc -> withMember(pm -> {
+                    if (pythonClasses.get(String.format("%s_options", pm.name)) != null) return null;
+                    ClassInternal enumClass = newClass(new ClassInternal(String.format("%s_options", pm.name)), pc, ClassType.OPTIONS);
+                    pm.type = enumClass.name;
+                    String enumText = ctx.textBlockBody().getText()
+                            .replace("{", "").replace("}", "");
+                    for (String opt : enumText.split("\\|"))
+                        enumClass.enums.put(opt.trim(), new StringBuilder(opt.trim()));
+                    completeClass();
+                    return null;
+                })
+        );
+    }
 
     @Override
     public StringBuilder visitTextBlockBody(QEDocParser.TextBlockBodyContext ctx) {
@@ -202,11 +228,12 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     }
 
     @Override
-    public StringBuilder visitCardBlock(QEDocParser.CardBlockContext ctx) { return withClass(pc -> {
-            PythonClass cardClass = newClass(new PythonClass(ctx.structureBlockBody().ID().getText()), pc);
+    public StringBuilder visitCardBlock(QEDocParser.CardBlockContext ctx) {
+        return withClass(pc -> {
+            ClassInternal cardClass = newClass(new ClassInternal(ctx.structureBlockBody().ID().getText()), pc, ClassType.CARD);
 
             super.visitCardBlock(ctx);
-            newMember(new PythonMember(String.format("card_%s", cardClass.name), cardClass.name.toString()), pc);
+            newMember(new MemberInternal(String.format("card_%s", cardClass.name), cardClass.name.toString()), pc);
             completeMember();
             completeClass();
             return null;
@@ -217,7 +244,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     public StringBuilder visitCardFlagBlock(QEDocParser.CardFlagBlockContext ctx) {
         withClass(pc -> {
             String enumName = ctx.structureBlockBody().ID().toString();
-            newMember(new PythonMember(String.format("flag_%s", enumName), ""), pc);
+            newMember(new MemberInternal(String.format("flag_%s", enumName), ""), pc);
             return null;
         });
         super.visitCardFlagBlock(ctx);
@@ -228,10 +255,9 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     @Override
     public StringBuilder visitChooseBlock(QEDocParser.ChooseBlockContext ctx) {
         return withClass(pc -> {
-            choiceCounter++;
-            PythonClass choiceClass = newClass(new PythonClass(String.format("Choice%d", choiceCounter)), pc);
+            ClassInternal choiceClass = newClass(new ClassInternal(String.format("Choice%d", choiceCounter++)), pc, ClassType.CHOOSE);
             super.visitChooseBlock(ctx);
-            newMember(new PythonMember(choiceClass.name.toString().toLowerCase(), choiceClass.name.toString()), pc);
+            newMember(new MemberInternal(choiceClass.name.toString().toLowerCase(), choiceClass.name.toString()), pc);
             completeClass();
             return null;
         });
@@ -241,7 +267,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     public StringBuilder visitColBlock(QEDocParser.ColBlockContext ctx) {
         withClass(pc -> {
             String typeName = getSwitch(ctx.structureBlockBody().SwitchText(), "type");
-            newMember(new PythonMember(ctx.structureBlockBody().ID().toString(), translateType(typeName)), pc);
+            newMember(new MemberInternal(ctx.structureBlockBody().ID().toString(), typeName), pc);
             return null;
         });
         super.visitColBlock(ctx);
@@ -253,17 +279,17 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     public StringBuilder visitColGroupBlock(QEDocParser.ColGroupBlockContext ctx) {
         return withClass(pc -> {
             String typeName = getSwitch(ctx.structureBlockBody().SwitchText(), "type");
-            PythonMember template  = newMember(new PythonMember("",
-                    translateType(escape(typeName != null ? typeName : "STRING"))), new PythonClass(""));
+            MemberInternal template = newMember(new MemberInternal("",
+                    typeName != null ? typeName : "STRING"), new ClassInternal(""));
 
-            for (QEDocParser.BlockContext c: ctx.structureBlockBody().block()) {
-                if (c.plainTextBlock() != null)  visit(c);
+            for (QEDocParser.BlockContext c : ctx.structureBlockBody().block()) {
+                if (c.plainTextBlock() != null) visit(c);
             }
             completeMember();
 
-            for (QEDocParser.BlockContext c: ctx.structureBlockBody().block()) {
+            for (QEDocParser.BlockContext c : ctx.structureBlockBody().block()) {
                 if (c.smartAssBlock() != null) {
-                    newMember(new PythonMember(template), pc);
+                    newMember(new MemberInternal(template), pc);
                     visit(c);
                     completeMember();
                 }
@@ -274,9 +300,9 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
 
     @Override
     public StringBuilder visitColsBlock(QEDocParser.ColsBlockContext ctx) {
-        withClass(pc->{
+        withClass(pc -> {
             pc.name.append("_").append("col");
-            for (TerminalNode t: ctx.structureBlockBody().SwitchText()) {
+            for (TerminalNode t : ctx.structureBlockBody().SwitchText()) {
                 pc.others.append(t.getText());
             }
             return null;
@@ -290,51 +316,46 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
         return super.visitConditionalBlock(ctx);
     }
 
-    private static String translateType(String type) {
-        return switch (type) {
-            case "REAL" -> "float";
-            case "INTEGER" -> "int";
-            case "LOGICAL" -> "bool";
-            default -> "string";
-        };
-    }
     @Override
-    public StringBuilder visitDimBlock(QEDocParser.DimBlockContext ctx) { return withClass(pc -> {
-        PythonMember pm = newMember(new PythonMember(ctx.structureBlockBody().ID().toString(), ""), pc);
-        String startIndex = getSwitch(ctx.structureBlockBody().SwitchText(), "start");
-        String endIndex = getSwitch(ctx.structureBlockBody().SwitchText(), "end");
-        pm.others.append(String.format("Start: %s\n", startIndex))
-                .append(String.format("End: %s\n", endIndex));
-        String baseTypeName = getSwitch(ctx.structureBlockBody().SwitchText(), "type");
-        pm.type.append(String.format("List[%s]", translateType(baseTypeName)));
-        super.visitDimBlock(ctx);
-        completeMember();
-        return null;
-    });}
-
-    @Override
-    public StringBuilder visitDimensionGroupBlock(QEDocParser.DimensionGroupBlockContext ctx) { return withClass(pc -> {
-        String startIndex = getSwitch(ctx.structureBlockBody().SwitchText(), "start");
-        String endIndex = getSwitch(ctx.structureBlockBody().SwitchText(), "end");
-        String baseTypeName = getSwitch(ctx.structureBlockBody().SwitchText(), "type");
-
-        PythonMember template = newMember(new PythonMember(
-                "", String.format("List[%s]", translateType(baseTypeName))), new PythonClass(""));
-        template.others.append(String.format("Start: %s\n", startIndex))
-                .append(String.format("End: %s\n", endIndex));
-
-        return visitGroup(pc, template, ctx.structureBlockBody());
-    });
+    public StringBuilder visitDimBlock(QEDocParser.DimBlockContext ctx) {
+        return withClass(pc -> {
+            MemberInternal pm = newMember(new MemberInternal(ctx.structureBlockBody().ID().toString(), ""), pc);
+            String startIndex = getSwitch(ctx.structureBlockBody().SwitchText(), "start");
+            String endIndex = getSwitch(ctx.structureBlockBody().SwitchText(), "end");
+            pm.others.append(String.format("Start - %s; ", startIndex))
+                    .append(String.format("End - %s\n", endIndex));
+            String baseTypeName = getSwitch(ctx.structureBlockBody().SwitchText(), "type");
+            pm.type.append(String.format("List %s", baseTypeName));
+            super.visitDimBlock(ctx);
+            completeMember();
+            return null;
+        });
     }
 
-    private StringBuilder visitGroup(PythonClass pc, PythonMember template, QEDocParser.StructureBlockBodyContext structureBlockBodyContext) {
-        for (QEDocParser.BlockContext c: structureBlockBodyContext.block())
+    @Override
+    public StringBuilder visitDimensionGroupBlock(QEDocParser.DimensionGroupBlockContext ctx) {
+        return withClass(pc -> {
+            String startIndex = getSwitch(ctx.structureBlockBody().SwitchText(), "start");
+            String endIndex = getSwitch(ctx.structureBlockBody().SwitchText(), "end");
+            String baseTypeName = getSwitch(ctx.structureBlockBody().SwitchText(), "type");
+
+            MemberInternal template = newMember(new MemberInternal(
+                    "", String.format("List %s", baseTypeName)), new ClassInternal(""));
+            template.others.append(String.format("Start - %s; ", startIndex))
+                    .append(String.format("End - %s", endIndex));
+
+            return visitGroup(pc, template, ctx.structureBlockBody());
+        });
+    }
+
+    private StringBuilder visitGroup(ClassInternal pc, MemberInternal template, QEDocParser.StructureBlockBodyContext structureBlockBodyContext) {
+        for (QEDocParser.BlockContext c : structureBlockBodyContext.block())
             if (c.plainTextBlock() != null) visit(c);
 
 
-        for (QEDocParser.BlockContext c: structureBlockBodyContext.block()) {
+        for (QEDocParser.BlockContext c : structureBlockBodyContext.block()) {
             if (c.smartAssBlock() != null) {
-                newMember(new PythonMember(template), pc);
+                newMember(new MemberInternal(template), pc);
                 visit(c);
                 completeMember();
             }
@@ -353,13 +374,12 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     @Override
     public StringBuilder visitGroupBlock(QEDocParser.GroupBlockContext ctx) {
         return withClass(pc -> {
-            groupCounter++;
-            newClass(new PythonClass(String.format("Group%d", groupCounter)), pc);
+            newClass(new ClassInternal(String.format("Group%d", groupCounter++)), pc, ClassType.GROUP);
 
-            for (QEDocParser.BlockContext c: ctx.structureBlockBody().block())
-                if (c.plainTextBlock() != null)  visit(c);
+            for (QEDocParser.BlockContext c : ctx.structureBlockBody().block())
+                if (c.plainTextBlock() != null) visit(c);
 
-            for (QEDocParser.BlockContext c: ctx.structureBlockBody().block())
+            for (QEDocParser.BlockContext c : ctx.structureBlockBody().block())
                 if (c.structureBlock() != null) visit(c);
 
             completeClass();
@@ -373,8 +393,9 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
         StringBuilder className = new StringBuilder();
         String programName = getSwitch(ctx.structureBlockBody().SwitchText(), "program");
         assert programName != null;
-        className.append(escape(programName));
-        PythonClass pc = new PythonClass(className.toString());
+        className.append(programName);
+        ClassInternal pc = new ClassInternal(className.toString());
+        topLevelClass = pc;
         pythonClasses.put(pc.name.toString(), pc);
         classStack.push(pc);
 
@@ -390,14 +411,15 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     }
 
     @Override
-    public StringBuilder visitNameListBlock(QEDocParser.NameListBlockContext ctx) { return withClass(pc -> {
+    public StringBuilder visitNameListBlock(QEDocParser.NameListBlockContext ctx) {
+        return withClass(pc -> {
             String className = ctx.structureBlockBody().ID().toString();
 
-            newClass(new PythonClass(className), pc);
+            newClass(new ClassInternal(className), pc, ClassType.NAMELIST);
             super.visitNameListBlock(ctx);
             completeClass();
 
-            newMember(new PythonMember(String.format("namelist_%s", className), className), pc);
+            newMember(new MemberInternal(String.format("namelist_%s", className), className), pc);
             completeMember();
 
             return null;
@@ -414,16 +436,15 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
         return withClass(pc -> withMember(pm -> {
             String name = String.format("%s_options", pm.name);
             if (pythonClasses.get(name) != null) pythonClasses.remove(name);
-            PythonClass optionClass = newClass(new PythonEnumClass(name), pc);
+            ClassInternal optionClass = newClass(new ClassInternal(name), pc, ClassType.OPTIONS);
             pm.type = optionClass.name;
 
-            for (QEDocParser.BlockContext c: ctx.structureBlockBody().block()) {
-                if (c.plainTextBlock() != null) {
-                    PythonMember npm = newMember(new PythonMember(), new PythonClass(""));
-                    visit(c);
-                    completeMember();
-                    optionClass.others.append(npm.info);
-                }
+            for (QEDocParser.BlockContext c : ctx.structureBlockBody().block()) {
+                if (c.plainTextBlock() == null) continue;
+                MemberInternal npm = newMember(new MemberInternal("", ""), new ClassInternal(""));
+                visit(c);
+                completeMember();
+                optionClass.others.append(npm.info);
             }
             completeClass();
             return null;
@@ -438,14 +459,15 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     }
 
     @Override
-    public StringBuilder visitRowBlock(QEDocParser.RowBlockContext ctx) { return withClass(pc -> {
-        String typeName = getSwitch(ctx.structureBlockBody().SwitchText(), "type");
-        newMember(new PythonMember(
-                ctx.structureBlockBody().ID().toString(), translateType(typeName)), pc);
-        completeMember();
+    public StringBuilder visitRowBlock(QEDocParser.RowBlockContext ctx) {
+        return withClass(pc -> {
+            String typeName = getSwitch(ctx.structureBlockBody().SwitchText(), "type");
+            newMember(new MemberInternal(
+                    ctx.structureBlockBody().ID().toString(), typeName), pc);
+            completeMember();
 
-        return super.visitRowBlock(ctx);
-    });
+            return super.visitRowBlock(ctx);
+        });
     }
 
     @Override
@@ -457,9 +479,9 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     private StringBuilder visitRowOrColGroupBlock(QEDocParser.StructureBlockBodyContext ctx) {
         return withClass(pc -> {
             String typeName = getSwitch(ctx.SwitchText(), "type");
-            PythonMember template = newMember(new PythonMember("",
-                    translateType(escape(typeName != null ? typeName : "STRING"))),
-                    new PythonClass(""));
+            MemberInternal template = newMember(new MemberInternal("",
+                            typeName != null ? typeName : "STRING"),
+                    new ClassInternal(""));
 
             return visitGroup(pc, template, ctx);
         });
@@ -469,17 +491,15 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     public StringBuilder visitRowsBlock(QEDocParser.RowsBlockContext ctx) {
         withClass(pc -> {
             pc.name.append("_").append("row");
-            for (TerminalNode t: ctx.structureBlockBody().SwitchText())
+            for (TerminalNode t : ctx.structureBlockBody().SwitchText())
                 pc.others.append(t.getText());
             return null;
         });
         return super.visitRowsBlock(ctx);
-
     }
 
     @Override
     public StringBuilder visitSectionBlock(QEDocParser.SectionBlockContext ctx) {
-//        return super.visitSectionBlock(ctx);
         System.err.printf("Section is not implemented: %s.%n",
                 ctx.structureBlockBody().SwitchText(0).getText());
         return null;
@@ -498,25 +518,32 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     }
 
     @Override
-    public StringBuilder visitTableBlock(QEDocParser.TableBlockContext ctx) { return withClass(pc -> {
-        PythonClass tableClass = newClass(new PythonClass(ctx.structureBlockBody().ID().toString()), pc);
-        super.visitTableBlock(ctx);
-        completeClass();
-        newMember(new PythonMember(ctx.Table().getText(),
-                String.format("List[%s]", translateType(tableClass.name.toString()))), pc);
-        completeMember();
-        return null;
-    });}
+    public StringBuilder visitTableBlock(QEDocParser.TableBlockContext ctx) {
+        return withClass(pc -> {
+            ClassInternal tableClass = newClass(new ClassInternal(ctx.structureBlockBody().ID().toString()),
+                    pc, ClassType.ROW);
+            super.visitTableBlock(ctx);
+            completeClass();
+            newMember(new MemberInternal(ctx.Table().getText(),
+                    String.format("List %s", tableClass.name.toString())), pc);
+            completeMember();
+            return null;
+        });
+    }
 
     private String getSwitch(TerminalNode text, String switchName) {
         Pattern varTypeBuilderSwitchRegex = Pattern.compile(
                 String.format("-%s\\s+(.+)", switchName), Pattern.CASE_INSENSITIVE);
         Matcher m = varTypeBuilderSwitchRegex.matcher(text.toString());
-        if (m.find()) { return m.group(1).trim(); }
-        else { return null; }
+        if (m.find()) {
+            return m.group(1).trim();
+        } else {
+            return null;
+        }
     }
+
     private String getSwitch(List<TerminalNode> switches, String switchName) {
-        for (TerminalNode text: switches) {
+        for (TerminalNode text : switches) {
             String result = getSwitch(text, switchName);
             if (result != null) return result;
         }
@@ -527,7 +554,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     public StringBuilder visitVarBlock(QEDocParser.VarBlockContext ctx) {
         withClass(pc -> {
             String typeName = getSwitch(ctx.structureBlockBody().SwitchText(), "type");
-            newMember(new PythonMember(ctx.structureBlockBody().ID().toString(), translateType(typeName)), pc);
+            newMember(new MemberInternal(ctx.structureBlockBody().ID().toString(), typeName), pc);
             return null;
         });
         super.visitVarBlock(ctx);
@@ -539,23 +566,13 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
         return visitRowOrColGroupBlock(ctx.structureBlockBody());
     }
 
-    private String escape(String input) {
-
-        return input.replace("\"", "")
-                .replace("=", "_is_")
-                .replace("'", "")
-                .replace(".", "_")
-                .replace("OR", "_or_")
-                .replaceAll("\\s+", "_");
-    }
-
     private StringBuilder visitConditional(QEDocParser.StructureBlockContext ctx,
-                                  QEDocParser.StructureBlockBodyContext ctxBody,
-                                  Function<QEDocParser.StructureBlockContext, StringBuilder> visit) {
+                                           QEDocParser.StructureBlockBodyContext ctxBody,
+                                           Function<QEDocParser.StructureBlockContext, StringBuilder> visit) {
         return withClass(pc -> {
             String predicate = getSwitch(ctxBody.SwitchText(), "test");
-            PythonClass predicateClass = newClass(new PythonClass(String.format("%s_%s", pc.name,
-                    escape(predicate != null ? predicate : "Otherwise"))), pc);
+            ClassInternal predicateClass = newClass(new ClassInternal(String.format("%s %s",
+                    predicate != null ? predicate : "Otherwise", pc.name)), pc, ClassType.CHOICE);
             predicateClass.addInherit(pc);
             visit.apply(ctx);
             completeClass();
@@ -563,6 +580,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
         });
 
     }
+
     @Override
     public StringBuilder visitWhenBlock(QEDocParser.WhenBlockContext ctx) {
         return visitConditional(ctx, ctx.structureBlockBody(),
@@ -646,10 +664,12 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     }
 
     @Override
-    public StringBuilder visitSmartColBlock(QEDocParser.SmartColBlockContext ctx) { return withMember(pm -> {
-        pm.name = new StringBuilder(ctx.ID().getText());
-        return null;
-    });}
+    public StringBuilder visitSmartColBlock(QEDocParser.SmartColBlockContext ctx) {
+        return withMember(pm -> {
+            pm.name = new StringBuilder(ctx.ID().getText());
+            return null;
+        });
+    }
 
     @Override
     public StringBuilder visitSmartColGroupBlock(QEDocParser.SmartColGroupBlockContext ctx) {
@@ -667,7 +687,8 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     }
 
     @Override
-    public StringBuilder visitSmartDimBlock(QEDocParser.SmartDimBlockContext ctx) { return withMember(pm -> {
+    public StringBuilder visitSmartDimBlock(QEDocParser.SmartDimBlockContext ctx) {
+        return withMember(pm -> {
             pm.name = new StringBuilder(ctx.ID().getText());
             super.visitSmartDimBlock(ctx);
             return null;
@@ -720,7 +741,8 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     }
 
     @Override
-    public StringBuilder visitSmartRowBlock(QEDocParser.SmartRowBlockContext ctx) { return withMember(pm -> {
+    public StringBuilder visitSmartRowBlock(QEDocParser.SmartRowBlockContext ctx) {
+        return withMember(pm -> {
             pm.name = new StringBuilder(ctx.ID().getText());
             return null;
         });
@@ -757,7 +779,8 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     }
 
     @Override
-    public StringBuilder visitSmartVarBlock(QEDocParser.SmartVarBlockContext ctx) { return withMember(pm -> {
+    public StringBuilder visitSmartVarBlock(QEDocParser.SmartVarBlockContext ctx) {
+        return withMember(pm -> {
             pm.name = new StringBuilder(ctx.ID().getText());
             return null;
         });
