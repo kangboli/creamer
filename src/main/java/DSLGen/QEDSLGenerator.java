@@ -53,7 +53,6 @@ public class QEDSLGenerator {
         for (Map.Entry<String, ClassInternal> entry: visitor.pythonClasses.entrySet()) {
             ClassPython pc = new ClassPython(entry.getValue());
             File file = new File(String.format("%s/%s.py", dir.getAbsolutePath(), pc.getName()));
-            System.out.println(pc.getName());
             file.createNewFile();
             FileWriter writer =  new FileWriter(file, false);
             pc.toPython(writer);
@@ -78,6 +77,16 @@ public class QEDSLGenerator {
             writer.write(String.format("from .%s import %s\n",
                     pc.getName(), pc.getName()));
         }
+
+        writer.write("__all__ = [");
+        for (Map.Entry<String, ClassInternal> entry: visitor.pythonClasses.entrySet()) {
+            ClassPython pc = new ClassPython(entry.getValue());
+            writer.write(String.format("'%s', ", pc.getName()));
+//            for (MemberInternal pm: pc.members) {
+//                System.out.println(pm.defaultString.toString());
+//            }
+        }
+        writer.write("]\n");
         writer.close();
 
     }

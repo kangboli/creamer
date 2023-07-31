@@ -1,2 +1,5 @@
-class Options:
+from enum import Enum
+
+
+class Options(Enum):
     pass

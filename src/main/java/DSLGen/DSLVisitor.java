@@ -4,10 +4,7 @@ import GeneratedQEGrammar.QEDocParser;
 import GeneratedQEGrammar.QEDocParserBaseVisitor;
 import org.antlr.v4.runtime.tree.TerminalNode;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Stack;
+import java.util.*;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -61,20 +58,22 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     private ClassInternal newClass(ClassInternal newPc, ClassInternal pc, ClassType type) {
         pc.imports.add(newPc);
         switch (type) {
-            case NAMELIST: newPc.addInherit(nameListClass);
-            case CARD: newPc.addInherit(cardClass);
-            case OPTIONS: newPc.addInherit(optionsClass);
-            case CHOOSE: newPc.addInherit(chooseClass);
-            case GROUP: newPc.addInherit(groupClass);
-            case ROW: newPc.addInherit(rowClass);
-            case CHOICE: newPc.addInherit(choiceClass);
-            default:
+            case NAMELIST -> newPc.addInherit(nameListClass);
+            case CARD -> newPc.addInherit(cardClass);
+            case OPTIONS -> newPc.addInherit(optionsClass);
+            case CHOOSE -> newPc.addInherit(chooseClass);
+            case GROUP -> newPc.addInherit(groupClass);
+            case ROW -> newPc.addInherit(rowClass);
+            case CHOICE -> newPc.addInherit(choiceClass);
+            default -> {}
         }
         classStack.push(newPc);
         return newPc;
     }
 
     private MemberInternal newMember(MemberInternal newPm, ClassInternal pc) {
+        String key = newPm.getName();
+        if (key != null && pythonClasses.containsKey(key)) newPm.setDefinedType(pc);
         pc.members.add(newPm);
         memberStack.push(newPm);
         return newPm;
@@ -82,7 +81,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
 
     private void completeClass() {
         ClassInternal complete = classStack.pop();
-        pythonClasses.put(complete.name.toString(), complete);
+        pythonClasses.put(complete.getName(), complete);
     }
 
     private void completeMember() {
@@ -113,22 +112,30 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
 
     @Override
     public StringBuilder visitDefaultBlock(QEDocParser.DefaultBlockContext ctx) {
-        return withMember(pm -> pm.defaultString.append(super.visitDefaultBlock(ctx)));
+        StringBuilder builder = super.visitDefaultBlock(ctx);
+        return withMember(pm -> pm.appendToDefaultString(builder.toString()));
     }
 
     @Override
     public StringBuilder visitInfoBlock(QEDocParser.InfoBlockContext ctx) {
-        return withMember(pm -> pm.info.append(super.visitInfoBlock(ctx)));
+        return withMember(pm -> pm.appendToInfo(super.visitInfoBlock(ctx).toString()));
     }
 
     @Override
     public StringBuilder visitOptBlock(QEDocParser.OptBlockContext ctx) {
-        return withClass(pec -> {
+        return withClass(pec ->  {
             String enumName = getSwitch(ctx.OptBegin(), "val");
             assert enumName != null;
+            enumName = enumName
+                    .replaceAll("\\{", "")
+                    .replaceAll("}", "")
+                    .trim();
+
             StringBuilder enumText = visit(ctx.textBlockBody());
-            pec.enums.put(enumName.replace("{", "").trim(),
-                    enumText != null? enumText: new StringBuilder("Undocumented ").append(undocumentedCounter++));
+            for (String entry: enumName.split(",")) {
+                pec.enums.put(entry.trim(),
+                        enumText != null? enumText: new StringBuilder("Undocumented ").append(undocumentedCounter++));
+            }
             return null;
         });
     }
@@ -169,9 +176,9 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     @Override
     public StringBuilder visitEnumBlock(QEDocParser.EnumBlockContext ctx) {
         return withClass(pc -> withMember(pm -> {
-                    if (pythonClasses.get(String.format("%s_options", pm.name)) != null) return null;
-                    ClassInternal enumClass = newClass(new ClassInternal(String.format("%s_options", pm.name)), pc, ClassType.OPTIONS);
-                    pm.type = enumClass.name;
+                    if (pythonClasses.get(String.format("%s_options", pm.getName())) != null) return null;
+                    ClassInternal enumClass = newClass(new ClassInternal(String.format("%s_options", pm.getName())), pc, ClassType.OPTIONS);
+                    pm.setDefinedType(enumClass);
                     String enumText = ctx.textBlockBody().getText()
                             .replace("{", "").replace("}", "");
                     for (String opt : enumText.split("\\|"))
@@ -189,22 +196,38 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
 
     @Override
     public StringBuilder visitRef(QEDocParser.RefContext ctx) {
-        return new StringBuilder(ctx.getText());
+        Pattern refRegex = Pattern.compile("@ref[\\t\\s\\n]*\\{([^}]*)}", Pattern.CASE_INSENSITIVE);
+        Matcher m = refRegex.matcher(ctx.getText());
+        if (m.find()) {
+            return new StringBuilder("~").append(m.group(1)).append("~");
+        } else return new StringBuilder(ctx.getText().replaceAll("@ref[\\t\\s\\n]*", "~")).append("~");
     }
 
     @Override
     public StringBuilder visitBoldText(QEDocParser.BoldTextContext ctx) {
-        return new StringBuilder(ctx.getText());
+        Pattern boldRegex = Pattern.compile("@b[\\t\\s\\n]*\\{([^}]*)}", Pattern.CASE_INSENSITIVE);
+        Matcher m = boldRegex.matcher(ctx.getText());
+        if (m.find()) {
+            return new StringBuilder("**").append(m.group(1)).append("**");
+        } else return new StringBuilder(ctx.getText().replaceAll("@b[\\t\\s\\n]*", "**")).append("**");
     }
 
     @Override
     public StringBuilder visitIText(QEDocParser.ITextContext ctx) {
-        return new StringBuilder(ctx.getText());
+        Pattern italicRegex = Pattern.compile("@i[\\t\\s\\n]*\\{([^}]*)}", Pattern.CASE_INSENSITIVE);
+        Matcher m = italicRegex.matcher(ctx.getText());
+        if (m.find()) {
+            return new StringBuilder("*").append(m.group(1)).append("*");
+        } else return new StringBuilder(ctx.getText().replaceAll("@i[\\t\\s\\n]*", "*")).append("*");
     }
 
     @Override
     public StringBuilder visitTTText(QEDocParser.TTTextContext ctx) {
-        return new StringBuilder(ctx.getText());
+        Pattern ttRegex = Pattern.compile("@tt[\\t\\s\\n]*\\{([^}]*)}", Pattern.CASE_INSENSITIVE);
+        Matcher m = ttRegex.matcher(ctx.getText());
+        if (m.find()) {
+            return new StringBuilder("`").append(m.group(1)).append("`");
+        } else return new StringBuilder(ctx.getText().replaceAll("@t[\\t\\s\\n]*", "`")).append("`");
     }
 
     @Override
@@ -233,7 +256,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
             ClassInternal cardClass = newClass(new ClassInternal(ctx.structureBlockBody().ID().getText()), pc, ClassType.CARD);
 
             super.visitCardBlock(ctx);
-            newMember(new MemberInternal(String.format("card_%s", cardClass.name), cardClass.name.toString()), pc);
+            newMember(new MemberInternal(String.format("%s_card", cardClass.getName().toLowerCase()), cardClass.getName()), pc);
             completeMember();
             completeClass();
             return null;
@@ -244,7 +267,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     public StringBuilder visitCardFlagBlock(QEDocParser.CardFlagBlockContext ctx) {
         withClass(pc -> {
             String enumName = ctx.structureBlockBody().ID().toString();
-            newMember(new MemberInternal(String.format("flag_%s", enumName), ""), pc);
+            newMember(new MemberInternal(String.format("flag_%s", enumName), null), pc);
             return null;
         });
         super.visitCardFlagBlock(ctx);
@@ -257,7 +280,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
         return withClass(pc -> {
             ClassInternal choiceClass = newClass(new ClassInternal(String.format("Choice%d", choiceCounter++)), pc, ClassType.CHOOSE);
             super.visitChooseBlock(ctx);
-            newMember(new MemberInternal(choiceClass.name.toString().toLowerCase(), choiceClass.name.toString()), pc);
+            newMember(new MemberInternal(choiceClass.getName().toLowerCase(), choiceClass.getName()), pc);
             completeClass();
             return null;
         });
@@ -279,7 +302,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     public StringBuilder visitColGroupBlock(QEDocParser.ColGroupBlockContext ctx) {
         return withClass(pc -> {
             String typeName = getSwitch(ctx.structureBlockBody().SwitchText(), "type");
-            MemberInternal template = newMember(new MemberInternal("",
+            MemberInternal template = newMember(new MemberInternal(null,
                     typeName != null ? typeName : "STRING"), new ClassInternal(""));
 
             for (QEDocParser.BlockContext c : ctx.structureBlockBody().block()) {
@@ -301,7 +324,6 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     @Override
     public StringBuilder visitColsBlock(QEDocParser.ColsBlockContext ctx) {
         withClass(pc -> {
-            pc.name.append("_").append("col");
             for (TerminalNode t : ctx.structureBlockBody().SwitchText()) {
                 pc.others.append(t.getText());
             }
@@ -319,13 +341,13 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     @Override
     public StringBuilder visitDimBlock(QEDocParser.DimBlockContext ctx) {
         return withClass(pc -> {
-            MemberInternal pm = newMember(new MemberInternal(ctx.structureBlockBody().ID().toString(), ""), pc);
+            MemberInternal pm = newMember(new MemberInternal(ctx.structureBlockBody().ID().toString().toLowerCase(), null), pc);
             String startIndex = getSwitch(ctx.structureBlockBody().SwitchText(), "start");
             String endIndex = getSwitch(ctx.structureBlockBody().SwitchText(), "end");
             pm.others.append(String.format("Start - %s; ", startIndex))
                     .append(String.format("End - %s\n", endIndex));
             String baseTypeName = getSwitch(ctx.structureBlockBody().SwitchText(), "type");
-            pm.type.append(String.format("List %s", baseTypeName));
+            pm.setType(String.format("List %s", baseTypeName));
             super.visitDimBlock(ctx);
             completeMember();
             return null;
@@ -340,7 +362,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
             String baseTypeName = getSwitch(ctx.structureBlockBody().SwitchText(), "type");
 
             MemberInternal template = newMember(new MemberInternal(
-                    "", String.format("List %s", baseTypeName)), new ClassInternal(""));
+                    null, String.format("List %s", baseTypeName)), new ClassInternal(""));
             template.others.append(String.format("Start - %s; ", startIndex))
                     .append(String.format("End - %s", endIndex));
 
@@ -396,7 +418,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
         className.append(programName);
         ClassInternal pc = new ClassInternal(className.toString());
         topLevelClass = pc;
-        pythonClasses.put(pc.name.toString(), pc);
+        pythonClasses.put(pc.getName(), pc);
         classStack.push(pc);
 
         super.visitInputDescriptionBlock(ctx);
@@ -419,7 +441,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
             super.visitNameListBlock(ctx);
             completeClass();
 
-            newMember(new MemberInternal(String.format("namelist_%s", className), className), pc);
+            newMember(new MemberInternal(String.format("%s_namelist", className.toLowerCase()), className), pc);
             completeMember();
 
             return null;
@@ -434,17 +456,17 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     @Override
     public StringBuilder visitOptionsBlock(QEDocParser.OptionsBlockContext ctx) {
         return withClass(pc -> withMember(pm -> {
-            String name = String.format("%s_options", pm.name);
+            String name = String.format("%s_options", pm.getName());
             if (pythonClasses.get(name) != null) pythonClasses.remove(name);
             ClassInternal optionClass = newClass(new ClassInternal(name), pc, ClassType.OPTIONS);
-            pm.type = optionClass.name;
+            pm.setDefinedType(optionClass);
 
             for (QEDocParser.BlockContext c : ctx.structureBlockBody().block()) {
                 if (c.plainTextBlock() == null) continue;
-                MemberInternal npm = newMember(new MemberInternal("", ""), new ClassInternal(""));
+                MemberInternal npm = newMember(new MemberInternal(null, null), new ClassInternal(""));
                 visit(c);
                 completeMember();
-                optionClass.others.append(npm.info);
+                optionClass.others.append(npm.getInfo());
             }
             completeClass();
             return null;
@@ -479,7 +501,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     private StringBuilder visitRowOrColGroupBlock(QEDocParser.StructureBlockBodyContext ctx) {
         return withClass(pc -> {
             String typeName = getSwitch(ctx.SwitchText(), "type");
-            MemberInternal template = newMember(new MemberInternal("",
+            MemberInternal template = newMember(new MemberInternal(null,
                             typeName != null ? typeName : "STRING"),
                     new ClassInternal(""));
 
@@ -490,7 +512,6 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     @Override
     public StringBuilder visitRowsBlock(QEDocParser.RowsBlockContext ctx) {
         withClass(pc -> {
-            pc.name.append("_").append("row");
             for (TerminalNode t : ctx.structureBlockBody().SwitchText())
                 pc.others.append(t.getText());
             return null;
@@ -520,12 +541,12 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     @Override
     public StringBuilder visitTableBlock(QEDocParser.TableBlockContext ctx) {
         return withClass(pc -> {
-            ClassInternal tableClass = newClass(new ClassInternal(ctx.structureBlockBody().ID().toString()),
+            ClassInternal tableClass = newClass(new ClassInternal(ctx.structureBlockBody().ID().toString()+"_entry"),
                     pc, ClassType.ROW);
             super.visitTableBlock(ctx);
             completeClass();
             newMember(new MemberInternal(ctx.Table().getText(),
-                    String.format("List %s", tableClass.name.toString())), pc);
+                    String.format("List %s", tableClass.getName())), pc);
             completeMember();
             return null;
         });
@@ -558,6 +579,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
             return null;
         });
         super.visitVarBlock(ctx);
+        completeMember();
         return null;
     }
 
@@ -572,7 +594,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
         return withClass(pc -> {
             String predicate = getSwitch(ctxBody.SwitchText(), "test");
             ClassInternal predicateClass = newClass(new ClassInternal(String.format("%s %s",
-                    predicate != null ? predicate : "Otherwise", pc.name)), pc, ClassType.CHOICE);
+                    predicate != null ? predicate : "Otherwise", pc.getName())), pc, ClassType.CHOICE);
             predicateClass.addInherit(pc);
             visit.apply(ctx);
             completeClass();
@@ -666,7 +688,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     @Override
     public StringBuilder visitSmartColBlock(QEDocParser.SmartColBlockContext ctx) {
         return withMember(pm -> {
-            pm.name = new StringBuilder(ctx.ID().getText());
+            pm.setName(ctx.ID().getText());
             return null;
         });
     }
@@ -689,7 +711,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     @Override
     public StringBuilder visitSmartDimBlock(QEDocParser.SmartDimBlockContext ctx) {
         return withMember(pm -> {
-            pm.name = new StringBuilder(ctx.ID().getText());
+            pm.setName(ctx.ID().getText());
             super.visitSmartDimBlock(ctx);
             return null;
         });
@@ -743,7 +765,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     @Override
     public StringBuilder visitSmartRowBlock(QEDocParser.SmartRowBlockContext ctx) {
         return withMember(pm -> {
-            pm.name = new StringBuilder(ctx.ID().getText());
+            pm.setName(ctx.ID().getText());
             return null;
         });
     }
@@ -781,7 +803,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     @Override
     public StringBuilder visitSmartVarBlock(QEDocParser.SmartVarBlockContext ctx) {
         return withMember(pm -> {
-            pm.name = new StringBuilder(ctx.ID().getText());
+            pm.setName(ctx.ID().getText());
             return null;
         });
     }

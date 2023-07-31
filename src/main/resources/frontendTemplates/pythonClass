@@ -1,5 +1,4 @@
-from typing import Optional
-import string
+from typing import Optional, List
 <#list pc.imports as import>
 from .${import.name} import ${import.name}
 </#list>
@@ -8,27 +7,67 @@ from .${import.name} import ${import.name}
 class ${pc.name}<#if pc.inherits?size gt 0 >(${pc.getCommaSeparatedInherits()})</#if>:
     """
 <#if pc.intro != "">
-    Intro: ${pc.intro}
+    Intro:
+    ================
+${pc.intro}
 
 </#if><#if pc.label != "">
-    Label: ${pc.label}
+    Label:
+    ================
+${pc.label}
 
 </#if><#if pc.message != "">
-    Message: ${pc.message}
+    Message:
+    ================
+${pc.message}
 
 </#if><#if pc.others != "">
-    Others: ${pc.others}
+    Others:
+    ================
+${pc.others}
+
+</#if><#if pc.others != "">
+    Quantum Espresso Version:
+    =========================
+    Not yet implemented.
 </#if>
     """
-    <#if pc.enums?size gt 0><#list pc.enums as key, value>
-    ${key} = '${value}'
+    <#if pc.enums?size gt 0>
+    <#list pc.enums as key, value>
+    ${key} = ${key?index}
+    """${value}
+    """
     </#list><#elseif pc.members?size == 0>
     pass<#else>
     def __init__(self,
         <#list pc.members as member>
-                 ${member.name}: Optional[${member.getType()}] = None,
+                 ${member.name}: Optional[${member.getType()}] = <#if
+        member.isBuiltin()>None<#elseif
+        member.isEnum()>None<#else
+        >${member.getType()}()</#if>,
         </#list>
                  ):
+        """
+        Parameters
+        ----------
+        <#list pc.members as member>
+        **${member.name}**: ${member.type}
+<#if member.default != "">
+            *Default*: ${member.indent(member.default)}
+
+</#if><#if member.info != "">
+            *Info*: ${member.indent(member.info)}
+
+</#if><#if member.others != "">
+            *Others*: ${member.indent(member.others)}
+
+</#if>
+
+        </#list>
+            Quantum Espresso Version
+            ------------------------
+            Not yet implemented.
+        """
         <#list pc.members as member>
         self._${member.name}: Optional[${member.getType()}] = ${member.name}
         </#list>
@@ -38,13 +77,22 @@ class ${pc.name}<#if pc.inherits?size gt 0 >(${pc.getCommaSeparatedInherits()})<
     def ${member.name}(self) -> ${member.type}:
         """
 <#if member.default != "">
-        Default: ${member.default}
+        Default:
+        ================
+${member.default}
 
 </#if><#if member.info != "">
-        Info:  ${member.info}
+        Info:
+        ================
+${member.info}
 
 </#if><#if member.others != "">
-        Others:  ${member.others}
+        Others:
+        ================
+${member.others}</#if><#if member.hasDoc() >
+        Quantum Espresso Version:
+        =========================
+        Not yet implemented.
 </#if>
         """
         return self._${member.name}

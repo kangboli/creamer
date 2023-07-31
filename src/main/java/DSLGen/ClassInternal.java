@@ -1,6 +1,5 @@
 package DSLGen;
 
-import freemarker.core.OutputFormat;
 import freemarker.core.PlainTextOutputFormat;
 import freemarker.template.Configuration;
 import freemarker.template.TemplateExceptionHandler;
@@ -12,7 +11,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class ClassInternal {
-    protected StringBuilder name;
+    private StringBuilder name;
     public ArrayList<MemberInternal> members;
     public ArrayList<ClassInternal> imports;
     public boolean toc = false;
@@ -50,14 +49,22 @@ public class ClassInternal {
         cfg = another.cfg;
     }
 
+    public String getName(){
+        return name.toString();
+    }
+
     public static String escape(String input) {
-        return input.replace("\"", "__dq__")
+        return input.replace("\"", "")
                 .replace("=", "__is__")
-                .replace("'", "__sq__")
+                .replace("'", "")
+                .replace("{", "")
+                .replace("}", "")
+                .replace(",", "__comma__")
                 .replace(".", "__dot__")
                 .replace("-", "__dash__")
                 .replace("(", "__lp__")
                 .replace(")", "__rp__")
+                .replace("lambda", "lambda_is_a_python_keyword")
                 .replaceAll("\\s+", "__ws__");
     }
 
@@ -66,7 +73,7 @@ public class ClassInternal {
             case "REAL" -> "float";
             case "INTEGER" -> "int";
             case "LOGICAL" -> "bool";
-            case "CHARACTER", "STRING" -> "string";
+            case "CHARACTER", "STRING" -> "str";
             default -> type;
         };
     }
@@ -78,7 +85,7 @@ public class ClassInternal {
         builder.append("imports:\n");
         for (ClassInternal i: imports) builder.append(String.format("%s\n", i.name).indent(4));
         builder.append("members:\n");
-        for (MemberInternal member: members) builder.append(String.format("%s: %s", member.name, member.type).indent(4));
+        for (MemberInternal member: members) builder.append(String.format("%s: %s", member.getName(), member.getType()).indent(4));
         builder.append("enums:\n");
         for (Map.Entry<String, StringBuilder> e: enums.entrySet()) {
             builder.append(String.format("%s: %s\n", e.getKey(), e.getValue()).indent(4));

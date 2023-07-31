@@ -42,13 +42,13 @@ public class ClassPython extends ClassInternal{
         HashMap<String, String> formattedEnum = new HashMap<>();
         for (Map.Entry<String, StringBuilder> entry: enums.entrySet()) {
             formattedEnum.put(escape(entry.getKey()).toLowerCase(),
-                    entry.getValue().toString());
+                    entry.getValue().toString().indent(3));
         }
         return formattedEnum;
     }
 
     public String getName() {
-        return convertName(name.toString());
+        return convertName(super.getName());
     }
 
     public static String convertName(String name) {
@@ -65,21 +65,24 @@ public class ClassPython extends ClassInternal{
     }
 
     public String getIntro() {
-        return intro.toString();
+        return intro.toString().indent(4);
     }
 
     public String getLabel() {
-        return label.toString();
+        return label.toString().indent(4);
     }
 
     public String getMessage() {
-        return message.toString();
+        return message.toString().indent(4);
     }
 
     public String getOthers() {
-        return others.toString();
+        return others.toString().indent(4);
     }
 
+    public boolean hasDoc() {
+        return !intro.toString().equals("") || !label.toString().equals("") || !others.toString().equals("") || !message.toString().equals("");
+    }
 
     public void toPython(OutputStreamWriter stream) {
         HashMap<String, Object> root = new HashMap<>();

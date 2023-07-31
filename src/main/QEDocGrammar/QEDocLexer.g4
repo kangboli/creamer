@@ -79,8 +79,8 @@ TTText: '@tt' WST? (StringText|LogicalText|ScopedText|WordText);
 StringText: '\''WST? (WST? WordText WST?)* WST?'\'';
 LogicalText: ('.FALSE.'|'.TRUE.');
 ScopedText: '{' (WST? WordText WST?)* WST? '}';
-WordText: ~[@{} \r\t\n]+;
-WST : [ \t\r\n]+ -> skip;
+WordText: ~[@{} \r\t\n]+ | [\n];
+WST : [ \t\r]+ -> skip;
 EndText: '}' -> popMode;
 
 //Mul: '*';
