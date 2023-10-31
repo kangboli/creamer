@@ -29,9 +29,10 @@ public class QEDSLGenerator {
         ParseTree tree = parser.def();
         DSLVisitor visitor = new DSLVisitor();
         visitor.visit(tree);
-        File dir = new File(String.format(
+        /* File dir = new File(String.format(
                 "/Users/kangbo/v_drive/creamer_doc_parser/generated_frontend/%s",
-                new ClassPython(visitor.topLevelClass).getName()));
+                new ClassPython(visitor.topLevelClass).getName())); */
+        File dir = new File(Paths.get("generated_frontend", new ClassPython(visitor.topLevelClass).getName()).toString());
         if (!dir.exists()) {
             if (!dir.mkdir()) {
                 System.err.printf("Cannot make directory: %s%n", dir.getAbsolutePath());
@@ -50,7 +51,7 @@ public class QEDSLGenerator {
             Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
         }
 
-        for (Map.Entry<String, ClassInternal> entry: visitor.pythonClasses.entrySet()) {
+        for (Map.Entry<String, ClassInternal> entry: visitor.classInternals.entrySet()) {
             ClassPython pc = new ClassPython(entry.getValue());
             File file = new File(String.format("%s/%s.py", dir.getAbsolutePath(), pc.getName()));
             file.createNewFile();
@@ -72,14 +73,14 @@ public class QEDSLGenerator {
         System.out.println(file.getAbsolutePath());
         FileWriter writer = new FileWriter(file);
 
-        for (Map.Entry<String, ClassInternal> entry: visitor.pythonClasses.entrySet()) {
+        for (Map.Entry<String, ClassInternal> entry: visitor.classInternals.entrySet()) {
             ClassPython pc = new ClassPython(entry.getValue());
             writer.write(String.format("from .%s import %s\n",
                     pc.getName(), pc.getName()));
         }
 
         writer.write("__all__ = [");
-        for (Map.Entry<String, ClassInternal> entry: visitor.pythonClasses.entrySet()) {
+        for (Map.Entry<String, ClassInternal> entry: visitor.classInternals.entrySet()) {
             ClassPython pc = new ClassPython(entry.getValue());
             writer.write(String.format("'%s', ", pc.getName()));
 //            for (MemberInternal pm: pc.members) {

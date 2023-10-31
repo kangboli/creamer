@@ -1,0 +1,15 @@
+<h1 id="creamer-for-quantum-espresso">Creamer for Quantum Espresso</h1>
+<p>This project makes Quantum Espresso significantly more approachable. It aims to provide</p>
+<ol type="1">
+<li>A microservice for running the calculation. This separates server hacking from number crunching so that people who don’t know how to hack servers can still crunch numbers and vice versa.</li>
+<li>A Python DSL for writing the input and running the calculation. This can be quite useful, It not only provides autocompletion and error checking, but also makes automated runs and integration with other tasks rather easy.</li>
+<li>A database for collecting and managing the calculation for down stream analysis. It also helps to avoid repeated calculation, especially when the program on the client side crashes.</li>
+</ol>
+<h2 id="quantum-espresso-python-dsl-creamer">Quantum Espresso Python DSL (creamer)</h2>
+<p>This DSL is created by parsing the <code>.def</code> files with <code>ANTLR4</code> and generating an OOP Python framework. This is very different from writing the Quantum Espresso input file as a Python dictionary since you get</p>
+<ol type="1">
+<li>Autocompletion: The available fields of a block as well as their possible options pops up as you type.</li>
+<li>Comprehensive Syntax checking: If you put in a field that does not exist or in the wrong block, your editor will give you an error. If you put in the wrong type for a parameter, your editor will give you an error. If you put in a string that is not an available option, your editor will give you an error.</li>
+<li>Quick documentation: Documentation for the corresponding fields will pop up on the side as you type. The list of possible fields and there corresponding types will show up at the right time (given a reasonable editor).</li>
+<li>Language Integration: An OOP Framework .</li>
+</ol>

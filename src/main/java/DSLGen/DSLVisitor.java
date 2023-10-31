@@ -10,9 +10,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
-    public final HashMap<String, ClassInternal> pythonClasses;
-    // Because ANTLR4 set the method arguments to be only the context, to pass other arguments,
-    // I have to manually set up a call stack.
+    /*
+     * This class visits the nodes in the AST and build a list of ClassInternal.
+     */
+    public final HashMap<String, ClassInternal> classInternals;
+    // Because ANTLR4 constraints the context to be the only argument and the
+    // return types of all visits are the same, we have to rely on side effects
+    // to build the ClassInternal. To keep the side effect managible, the state
+    // is mostly two stacks, and the visitor methods work only on the top of
+    // the stack.
     private final Stack<ClassInternal> classStack;
     private final Stack<MemberInternal> memberStack;
     private int choiceCounter = 0;
@@ -28,20 +34,24 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     private final ClassInternal choiceClass = new ClassInternal("Choice");
 
     public DSLVisitor() {
-        pythonClasses = new HashMap<>();
+        classInternals = new HashMap<>();
         classStack = new Stack<>();
         memberStack = new Stack<>();
     }
 
     public String toString() {
         StringBuilder builder = new StringBuilder();
-        for (Map.Entry<String, ClassInternal> entry : pythonClasses.entrySet()) {
+        for (Map.Entry<String, ClassInternal> entry : classInternals.entrySet()) {
             builder.append(entry.getValue().toString()).append("\n");
         }
         return builder.toString();
     }
 
     private StringBuilder withClass(Function<ClassInternal, StringBuilder> f) {
+        /*
+         * This provides the syntax `withClass(pc->...)`, which allows 
+         * the calling method to work on the top of the ClassInternal stack.
+         */
         ClassInternal pc = classStack.pop();
         StringBuilder builder = f.apply(pc);
         classStack.push(pc);
@@ -49,6 +59,10 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     }
 
     private StringBuilder withMember(Function<MemberInternal, StringBuilder> f) {
+        /*
+         * Similar to `withClass`, this allows the calling method to work on the 
+         * top of the MemberInternal stack.
+         */
         MemberInternal pm = memberStack.pop();
         StringBuilder builder = f.apply(pm);
         memberStack.push(pm);
@@ -56,6 +70,14 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     }
 
     private ClassInternal newClass(ClassInternal newPc, ClassInternal pc, ClassType type) {
+        /*
+         * When creating a new ClassInternal, the class on top of the stack contains
+         * an instance of the new class as its field, so the top class should import the new class.
+         *
+         * A new class should also inherit from an abstract class.
+         * 
+         * After a new ClassInternal is created, it should be pushed on top of the stack.
+         */
         pc.imports.add(newPc);
         switch (type) {
             case NAMELIST -> newPc.addInherit(nameListClass);
@@ -72,19 +94,31 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     }
 
     private MemberInternal newMember(MemberInternal newPm, ClassInternal pc) {
+        /*
+         * When creating a new member, it's type might be a class internal.
+         */
         String key = newPm.getName();
-        if (key != null && pythonClasses.containsKey(key)) newPm.setDefinedType(pc);
+        if (key != null && classInternals.containsKey(key)) newPm.setDefinedType(pc);
         pc.members.add(newPm);
         memberStack.push(newPm);
         return newPm;
     }
 
     private void completeClass() {
+        /*
+         * If a ClassInternal is completed, it is popped from the stack
+         * and stored in the set of classInternals.
+         */
         ClassInternal complete = classStack.pop();
-        pythonClasses.put(complete.getName(), complete);
+        classInternals.put(complete.getName(), complete);
     }
 
     private void completeMember() {
+        /*
+         * When a memberInternal is completed, it's popped from the stack
+         * without adding it to a set. The reason is that the member is assumed
+         * to have been added to a class.
+         */
         memberStack.pop();
     }
 
@@ -176,7 +210,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     @Override
     public StringBuilder visitEnumBlock(QEDocParser.EnumBlockContext ctx) {
         return withClass(pc -> withMember(pm -> {
-                    if (pythonClasses.get(String.format("%s_options", pm.getName())) != null) return null;
+                    if (classInternals.get(String.format("%s_options", pm.getName())) != null) return null;
                     ClassInternal enumClass = newClass(new ClassInternal(String.format("%s_options", pm.getName())), pc, ClassType.OPTIONS);
                     pm.setDefinedType(enumClass);
                     String enumText = ctx.textBlockBody().getText()
@@ -418,7 +452,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
         className.append(programName);
         ClassInternal pc = new ClassInternal(className.toString());
         topLevelClass = pc;
-        pythonClasses.put(pc.getName(), pc);
+        classInternals.put(pc.getName(), pc);
         classStack.push(pc);
 
         super.visitInputDescriptionBlock(ctx);
@@ -457,7 +491,7 @@ public class DSLVisitor extends QEDocParserBaseVisitor<StringBuilder> {
     public StringBuilder visitOptionsBlock(QEDocParser.OptionsBlockContext ctx) {
         return withClass(pc -> withMember(pm -> {
             String name = String.format("%s_options", pm.getName());
-            if (pythonClasses.get(name) != null) pythonClasses.remove(name);
+            if (classInternals.get(name) != null) classInternals.remove(name);
             ClassInternal optionClass = newClass(new ClassInternal(name), pc, ClassType.OPTIONS);
             pm.setDefinedType(optionClass);
 

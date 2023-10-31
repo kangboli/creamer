@@ -1,6 +1,10 @@
 package DSLGen;
 
 public class MemberInternal {
+    /*
+     * This models a member/field of a ClassInternal.
+     * The type of the member can be an elementary type or a ClassInternal.
+     */
     private StringBuilder name;
     private StringBuilder type;
     private ClassInternal definedType;

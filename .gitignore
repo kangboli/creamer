@@ -1,11 +1,11 @@
 .idea/**
 .gradle/**
 gradle/
-def_files/
 src/main/java/GeneratedQEGrammar/
 src/main/java/QEDocGrammar/*.java
 src/main/java/QEDocGrammar/*.interp
 src/main/java/QEDocGrammar/*.tokens
 src/main/gen/
 build/**
-generated_frontend/
+backup
+README.md

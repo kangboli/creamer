@@ -52,11 +52,12 @@ Table: 'table';
 VarGroup: 'vargroup';
 Var: 'var';
 When: 'when';
+Dq: '"'; // -> pushMode(adhocString);
 
 SwitchText: Flag WS ~['"{}-]+
           | Flag WS OB ~[{}]+ CB
           | Flag WS '\'' ~[']+ '\''
-          | Flag WS '"' ~["]+ '"'
+          | Flag WS Dq ~["]+ Dq
           ;
 
 Flag: '-'ID ;
@@ -70,6 +71,10 @@ WS : [ \t\r\n]+ -> skip;
 OB: '{';
 CB: '}';
 
+//mode adhocString;
+//
+//EndAdHocString: '"' -> popMode;
+
 mode richText;
 Ref: '@ref' WST? WordText;
 IText: '@i' WST? (StringText|LogicalText|ScopedText|WordText);
@@ -82,6 +87,7 @@ ScopedText: '{' (WST? WordText WST?)* WST? '}';
 WordText: ~[@{} \r\t\n]+ | [\n];
 WST : [ \t\r]+ -> skip;
 EndText: '}' -> popMode;
+
 
 //Mul: '*';
 //Plus: '+';

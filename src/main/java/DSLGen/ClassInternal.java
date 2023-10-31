@@ -11,6 +11,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class ClassInternal {
+    /*
+     * We want to output code for classes that represents blocks in the .def
+     * files such as namelists and options. So we need to store the classes
+     * internally. This ClassInternal is a class that models a class.
+     */
     private StringBuilder name;
     public ArrayList<MemberInternal> members;
     public ArrayList<ClassInternal> imports;
@@ -21,7 +26,7 @@ public class ClassInternal {
     public StringBuilder others;
     public StringBuilder message;
     public HashMap<String, StringBuilder> enums;
-    protected Configuration cfg;
+    protected Configuration cfg; // Configuration of the freemarker template.
 
     public ClassInternal(String text) {
         this.name = new StringBuilder(text);

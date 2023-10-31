@@ -1,5 +1,6 @@
 plugins {
     id 'application'
+    id 'antlr'
 }
 
 group 'org.example'
@@ -12,36 +13,42 @@ repositories {
 dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.6.0'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
-    implementation 'org.antlr:antlr4:4.9'
+//    implementation 'org.antlr:antlr4:4.9'
     implementation 'org.freemarker:freemarker:2.3.30'
+    antlr "org.antlr:antlr4:4.9"
 }
 
-test {
-    useJUnitPlatform()
+//test {
+//    useJUnitPlatform()
+//}
+
+//task compileQELexer(type:Exec) {
+//    workingDir 'src/main/QEDocGrammar/'
+//    environment 'CLASSPATH', '/usr/local/lib/antlr-4.9-complete.jar:$CLASSPATH'
+//    commandLine 'java', '-jar', '/usr/local/lib/antlr-4.9-complete.jar',
+//            'QEDocLexer.g4',
+//            '-visitor',
+//            '-package', 'GeneratedQEGrammar',
+//            '-o', '../java/GeneratedQEGrammar/'
+//}
+//
+//task compileQEParser(type:Exec) {
+//    dependsOn 'compileQELexer'
+//    workingDir 'src/main/QEDocGrammar/'
+//    environment 'CLASSPATH', '/usr/local/lib/antlr-4.9-complete.jar:$CLASSPATH'
+//    commandLine 'java', '-jar', '/usr/local/lib/antlr-4.9-complete.jar',
+//            'QEDocParser.g4',
+//            '-visitor',
+//            '-package', 'GeneratedQEGrammar',
+//            '-o', '../java/GeneratedQEGrammar/'
+//}
+//
+generateGrammarSource {
+    outputDirectory = file("src/main/java/GeneratedQEGrammar")
+    arguments += ["-visitor", '-package', 'GeneratedQEGrammar']
 }
 
-task compileQELexer(type:Exec) {
-    workingDir 'src/main/QEDocGrammar/'
-    environment 'CLASSPATH', '/usr/local/lib/antlr-4.9-complete.jar:$CLASSPATH'
-    commandLine 'java', '-jar', '/usr/local/lib/antlr-4.9-complete.jar',
-            'QEDocLexer.g4',
-            '-visitor',
-            '-package', 'GeneratedQEGrammar',
-            '-o', '../java/GeneratedQEGrammar/'
-}
-
-task compileQEParser(type:Exec) {
-    dependsOn 'compileQELexer'
-    workingDir 'src/main/QEDocGrammar/'
-    environment 'CLASSPATH', '/usr/local/lib/antlr-4.9-complete.jar:$CLASSPATH'
-    commandLine 'java', '-jar', '/usr/local/lib/antlr-4.9-complete.jar',
-            'QEDocParser.g4',
-            '-visitor',
-            '-package', 'GeneratedQEGrammar',
-            '-o', '../java/GeneratedQEGrammar/'
-}
-
-compileJava.dependsOn compileQEParser
+//compileJava.dependsOn compileQEParser
 
 application {
     mainClass = 'DSLGen.QEDSLGenerator'
